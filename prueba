@@ -1,0 +1,82 @@
+from airflow import DAG
+from airflow.operators.python_operator import PythonOperator
+from airflow.utils.dates import days_ago
+import pandas as pd
+
+def read_csv_file():
+    df = pd.read_csv('/user/docs/seattle_traffic.csv')
+    print(df)
+
+
+def delete_empty_rows():
+    # read in the data
+    df = pd.read_csv('/user/docs/seattle_traffic.csv')
+
+    # remove rows that are entirely empty
+    df = df.dropna(how='all')
+
+    # write the resulting data back to the original file
+    df.to_csv('/user/docs/seattle_traffic_clean.csv', index=False)
+
+
+def calculate_accidents_by_weather():
+    # Lee los datos limpios
+    df = pd.read_csv('/user/docs/seattle_traffic_clean.csv')
+    
+    # Agrupa los datos por clima y cuenta el número de accidentes para cada clima
+    accidents_by_weather = df.groupby('Weather').size().reset_index(name='Total Accidents')
+
+    # Muestra el resultado en la consola
+    print(accidents_by_weather)
+
+def export_to_csv():
+    # Lee los datos transformados
+    df = pd.read_csv('/user/docs/seattle_traffic_clean.csv')
+    
+    # Exporta los datos a un nuevo archivo csv
+    df.to_csv('/user/docs/seattle_traffic_clean.csv', index=False)
+
+
+default_args = {
+    'owner': 'airflow',
+    'depends_on_past': False,
+    'start_date': days_ago(1),
+}
+
+dag = DAG(
+    'data_pipeline',
+    default_args=default_args,
+    schedule_interval='0 0 * * *',
+)
+
+
+##defining objects to execute functions
+
+extract_data_task = PythonOperator(
+    task_id='extract_data',
+    python_callable=read_csv_file,
+    dag=dag,
+)
+
+clean_data_task = PythonOperator(
+    task_id='delete_empty_rows',
+    python_callable=delete_empty_rows,
+    dag=dag,
+)
+
+transform_data_task = PythonOperator(
+    task_id='transform_data',
+    python_callable=calculate_accidents_by_weather,
+    dag=dag,
+)
+
+export_to_csv_task = PythonOperator(
+    task_id='export_to_csv',
+    python_callable=export_to_csv,
+    dag=dag,
+)
+
+##Defining the dependencies bet
+# ween tasks 
+
+extract_data_task >> clean_data_task >> transform_data_task >> export_to_csv_task
